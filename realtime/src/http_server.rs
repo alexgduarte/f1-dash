@@ -18,6 +18,7 @@ mod current;
 mod drivers;
 mod health;
 mod realtime;
+mod replay;
 mod series;
 
 pub type Hubs = Arc<HashMap<Series, FeedHub>>;
@@ -63,6 +64,8 @@ pub async fn start(hubs: Hubs) -> Result<(), Error> {
         .route("/api/current", get(current::current_state))
         .route("/api/drivers", get(drivers::drivers))
         .route("/api/connections", get(connections::current_connections))
+        .route("/api/replay", get(replay::stream))
+        .route("/api/replay/sessions", get(replay::sessions))
         .with_state(hubs)
         .layer(cors_layer())
         .into_make_service();

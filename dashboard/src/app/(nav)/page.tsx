@@ -22,6 +22,10 @@ const features = [
 		body: "Live rain radar around the circuit with a timeline, next to track and air temperature, humidity, rain and a wind arrow.",
 	},
 	{
+		title: "Session replay",
+		body: "Watch any finished Formula 1 session since 2018 again, with play, pause, up to 32× speed and a timeline to jump around.",
+	},
+	{
 		title: "Timing, map and race control",
 		body: "Leaderboard with gaps, sectors and mini sectors, a track map with approximate car positions, race control messages, team radio and track limit tracking.",
 	},

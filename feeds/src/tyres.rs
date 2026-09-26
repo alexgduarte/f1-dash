@@ -15,7 +15,6 @@
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, BTreeSet},
-    time::Duration,
 };
 
 use anyhow::{Context, Error};
@@ -27,6 +26,8 @@ use tracing::{debug, warn};
 pub mod rules;
 
 use rules::{Format, Return};
+
+use crate::archive::Archive;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -731,7 +732,7 @@ pub struct Tracker {
 
 impl Tracker {
     /// Starts fetching the earlier sessions of the weekend in the background.
-    pub fn start(archive: Option<&'static str>, session_info: Option<Value>) -> Self {
+    pub fn start(archive: Option<Archive>, session_info: Option<Value>) -> Self {
         let current = session_info.as_ref().and_then(CurrentSession::from_info);
 
         let history = match (archive, &current) {
@@ -807,20 +808,6 @@ impl Tracker {
     }
 }
 
-async fn get_json(client: &reqwest::Client, url: &str) -> Result<Value, Error> {
-    let text = client
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
-
-    // the archive serves UTF-8 with a byte order mark
-    serde_json::from_str(text.trim_start_matches('\u{feff}'))
-        .with_context(|| format!("invalid json at {url}"))
-}
-
 /// Past sessions never change, so their stints are fetched once per process.
 fn cached_stints() -> &'static std::sync::Mutex<BTreeMap<String, SessionStints>> {
     static CACHE: std::sync::OnceLock<std::sync::Mutex<BTreeMap<String, SessionStints>>> =
@@ -828,21 +815,23 @@ fn cached_stints() -> &'static std::sync::Mutex<BTreeMap<String, SessionStints>>
     CACHE.get_or_init(Default::default)
 }
 
-async fn fetch_stints(client: &reqwest::Client, url: String) -> Option<SessionStints> {
-    if let Some(stints) = cached_stints().lock().ok()?.get(&url) {
+async fn fetch_stints(archive: &Archive, path: &str) -> Option<SessionStints> {
+    let file = format!("{path}TimingAppData.json");
+
+    if let Some(stints) = cached_stints().lock().ok()?.get(&file) {
         return Some(stints.clone());
     }
 
-    match get_json(client, &url).await {
+    match archive.json(&file).await {
         Ok(value) => {
             let stints = parse_timing_app_data(&value);
             if let Ok(mut cache) = cached_stints().lock() {
-                cache.insert(url, stints.clone());
+                cache.insert(file, stints.clone());
             }
             Some(stints)
         }
         Err(err) => {
-            warn!(?err, url, "no timing data for earlier session");
+            warn!(?err, file, "no timing data for earlier session");
             None
         }
     }
@@ -872,12 +861,10 @@ fn q3_cars(timing_data: &Value) -> BTreeSet<String> {
         .unwrap_or_default()
 }
 
-async fn fetch_history(archive: &'static str, current: CurrentSession) -> Result<History, Error> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()?;
-
-    let index = get_json(&client, &format!("{archive}{}/Index.json", current.year)).await?;
+async fn fetch_history(archive: Archive, current: CurrentSession) -> Result<History, Error> {
+    let index = archive
+        .json(&format!("{}/Index.json", current.year))
+        .await?;
 
     let meeting = index
         .get("Meetings")
@@ -930,11 +917,11 @@ async fn fetch_history(archive: &'static str, current: CurrentSession) -> Result
             continue;
         };
 
-        let stints = fetch_stints(&client, format!("{archive}{path}TimingAppData.json")).await;
+        let stints = fetch_stints(&archive, path).await;
 
         // cars that reached Q3 hand back a set of the Q3 specification
         let q3 = if format == Format::Standard && session.kind == SessionKind::Qualifying {
-            match get_json(&client, &format!("{archive}{path}TimingData.json")).await {
+            match archive.json(&format!("{path}TimingData.json")).await {
                 Ok(timing) => Some(q3_cars(&timing)),
                 Err(err) => {
                     warn!(?err, "no qualifying classification");

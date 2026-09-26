@@ -11,6 +11,7 @@ import { useSocket } from "@/hooks/useSocket";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useSidebarStore } from "@/stores/useSidebarStore";
 import { useDataStore } from "@/stores/useDataStore";
+import { useReplayStore } from "@/stores/useReplayStore";
 
 import Sidebar from "@/components/Sidebar";
 import SidenavButton from "@/components/SidenavButton";
@@ -20,6 +21,8 @@ import TrackInfo from "@/components/TrackInfo";
 import DelayInput from "@/components/DelayInput";
 import DelayTimer from "@/components/DelayTimer";
 import ConnectionStatus from "@/components/ConnectionStatus";
+import ReplayBar from "@/components/ReplayBar";
+import FeedOffline from "@/components/FeedOffline";
 
 type Props = {
 	children: ReactNode;
@@ -27,10 +30,18 @@ type Props = {
 
 export default function DashboardLayout({ children }: Props) {
 	const series = useSettingsStore((state) => state.series);
+	const replaySession = useReplayStore((state) => state.session);
+	const replayRequest = useReplayStore((state) => state.request);
 
 	const stores = useStores();
 	const { handleInitial, handleUpdate, reset, maxDelay } = useDataEngine(stores);
-	const { connected } = useSocket({ series, handleInitial, handleUpdate, reset });
+	const { connected } = useSocket({
+		series,
+		replay: replaySession ? { session: replaySession, request: replayRequest } : null,
+		handleInitial,
+		handleUpdate,
+		reset,
+	});
 
 	const delay = useSettingsStore((state) => state.delay);
 	const syncing = delay > maxDelay;
@@ -46,6 +57,10 @@ export default function DashboardLayout({ children }: Props) {
 			<motion.div layout="size" className="flex h-full w-full flex-1 flex-col md:gap-2">
 				<DesktopStaticBar show={!syncing || ended} />
 				<MobileStaticBar show={!syncing || ended} connected={connected} />
+
+				{replaySession && <ReplayBar name={replaySession.name} />}
+
+				<FeedOffline connected={connected} series={series} replaying={!!replaySession} />
 
 				<div className={!syncing || ended ? "no-scrollbar w-full flex-1 overflow-auto md:rounded-lg" : "hidden"}>
 					<MobileDynamicBar />

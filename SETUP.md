@@ -46,6 +46,14 @@ RUST_LOG=realtime=info,feeds=info
 # (optional) championships to ingest, comma separated, default all
 SERIES=f1,f2,f3,f1a,wec
 
+# (optional) set to off to disable session replays (/api/replay), each
+# replay viewer keeps the session's timeline in memory
+REPLAY=on
+
+# (optional) read the F1 archive (replays, tyre history) from a local copy
+# with the same layout as https://livetiming.formula1.com/static/
+ARCHIVE_DIR=
+
 # Address where the webserver opens on with port
 ADDRESS=0.0.0.0:4000
 

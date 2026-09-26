@@ -13,10 +13,12 @@ use std::{
 use chrono::Datelike;
 use feeds::{
     FeedHub, HubMessage, Series,
+    archive::{self, Archive, ArchiveMeeting},
+    replay::{self, ReplayRequest},
     schedule::{self, Round},
 };
 use futures::StreamExt;
-use tauri::{State, ipc::Channel};
+use tauri::{AppHandle, Manager, State, ipc::Channel};
 use tokio::task::JoinHandle;
 use tracing::info;
 
@@ -26,20 +28,56 @@ struct RunningFeed {
     subscribers: usize,
 }
 
+/// A webview subscription: the task forwarding messages, and for replays the
+/// replay itself.
+struct Subscription {
+    series: Option<Series>,
+    tasks: Vec<JoinHandle<()>>,
+}
+
 /// Feeds run only while something subscribes to them, which keeps a phone
 /// from holding connections open for series nobody is looking at.
 #[derive(Default)]
 struct Feeds {
     running: Mutex<HashMap<Series, RunningFeed>>,
-    subscriptions: Mutex<HashMap<u32, (Series, JoinHandle<()>)>>,
+    subscriptions: Mutex<HashMap<u32, Subscription>>,
     next_id: AtomicU32,
 }
 
+/// Forwards a hub to the webview. When the webview goes away (reload, closed
+/// window) the subscription is dropped as if it had unsubscribed.
+fn forward(app: AppHandle, id: u32, hub: FeedHub, channel: Channel<HubMessage>) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut stream = std::pin::pin!(hub.stream());
+
+        while let Some(message) = stream.next().await {
+            if channel.send(message).is_err() {
+                break;
+            }
+        }
+
+        app.state::<Feeds>().unsubscribe(id);
+    })
+}
+
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 impl Feeds {
+    fn unsubscribe(&self, id: u32) {
+        let subscription = lock(&self.subscriptions).remove(&id);
+
+        if let Some(subscription) = subscription {
+            subscription.tasks.iter().for_each(JoinHandle::abort);
+            if let Some(series) = subscription.series {
+                self.release(series);
+            }
+        }
+    }
+
     fn acquire(&self, series: Series) -> FeedHub {
         let mut running = lock(&self.running);
 
@@ -78,6 +116,7 @@ impl Feeds {
 /// Returns an id for [`feed_unsubscribe`].
 #[tauri::command]
 async fn feed_subscribe(
+    app: AppHandle,
     feeds: State<'_, Feeds>,
     series: Series,
     channel: Channel<HubMessage>,
@@ -85,30 +124,62 @@ async fn feed_subscribe(
     let hub = feeds.acquire(series);
     let id = feeds.next_id.fetch_add(1, Ordering::Relaxed);
 
-    let forward = tokio::spawn(async move {
-        let mut stream = std::pin::pin!(hub.stream());
+    // registered before forwarding starts, so an early disconnect finds it
+    let mut subscriptions = lock(&feeds.subscriptions);
+    subscriptions.insert(
+        id,
+        Subscription {
+            series: Some(series),
+            tasks: vec![],
+        },
+    );
+    if let Some(subscription) = subscriptions.get_mut(&id) {
+        subscription.tasks.push(forward(app, id, hub, channel));
+    }
 
-        while let Some(message) = stream.next().await {
-            // the webview went away (reload, closed window)
-            if channel.send(message).is_err() {
-                break;
-            }
-        }
-    });
+    Ok(id)
+}
 
-    lock(&feeds.subscriptions).insert(id, (series, forward));
+/// Streams a replay of a past session. Pausing, seeking or changing speed
+/// means unsubscribing and subscribing again at the new position.
+#[tauri::command]
+async fn replay_subscribe(
+    app: AppHandle,
+    feeds: State<'_, Feeds>,
+    request: ReplayRequest,
+    channel: Channel<HubMessage>,
+) -> Result<u32, String> {
+    archive::check_session_path(&request.path).map_err(|err| err.to_string())?;
+
+    let hub = FeedHub::new(Series::F1);
+    let replay = hub.spawn_with(move |sink| replay::run_logged(Archive::f1(), request, sink));
+    let id = feeds.next_id.fetch_add(1, Ordering::Relaxed);
+
+    let mut subscriptions = lock(&feeds.subscriptions);
+    subscriptions.insert(
+        id,
+        Subscription {
+            series: None,
+            tasks: vec![replay],
+        },
+    );
+    if let Some(subscription) = subscriptions.get_mut(&id) {
+        subscription.tasks.push(forward(app, id, hub, channel));
+    }
 
     Ok(id)
 }
 
 #[tauri::command]
-fn feed_unsubscribe(feeds: State<'_, Feeds>, id: u32) {
-    let subscription = lock(&feeds.subscriptions).remove(&id);
+async fn replay_sessions(year: i32) -> Result<Vec<ArchiveMeeting>, String> {
+    archive::meetings(&Archive::f1(), year)
+        .await
+        .map_err(|err| err.to_string())
+}
 
-    if let Some((series, forward)) = subscription {
-        forward.abort();
-        feeds.release(series);
-    }
+#[tauri::command]
+fn feed_unsubscribe(feeds: State<'_, Feeds>, id: u32) {
+    feeds.unsubscribe(id);
 }
 
 #[tauri::command]
@@ -133,6 +204,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             feed_subscribe,
             feed_unsubscribe,
+            replay_subscribe,
+            replay_sessions,
             schedule
         ])
         .run(tauri::generate_context!())

@@ -7,7 +7,9 @@
 //! directly.
 
 pub mod adapters;
+pub mod archive;
 pub mod hub;
+pub mod replay;
 pub mod schedule;
 pub mod series;
 pub mod state;

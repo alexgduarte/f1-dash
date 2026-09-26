@@ -8,6 +8,7 @@ import clsx from "clsx";
 
 import { useSidebarStore } from "@/stores/useSidebarStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useReplayStore } from "@/stores/useReplayStore";
 
 import ConnectionStatus from "@/components/ConnectionStatus";
 import SeriesPicker from "@/components/SeriesPicker";
@@ -31,6 +32,10 @@ const liveTimingItems = [
 	{
 		href: "/dashboard/weather",
 		name: "Weather",
+	},
+	{
+		href: "/dashboard/replay",
+		name: "Replay",
 	},
 ];
 
@@ -59,6 +64,14 @@ export default function Sidebar({ connected }: Props) {
 	const oledMode = useSettingsStore((state) => state.oledMode);
 	const series = useSettingsStore((state) => state.series);
 	const setSeries = useSettingsStore((state) => state.setSeries);
+	const replaying = useReplayStore((state) => !!state.session);
+	const stopReplay = useReplayStore((state) => state.stop);
+
+	// picking a championship goes back to live timing
+	const selectSeries = (next: typeof series) => {
+		stopReplay();
+		setSeries(next);
+	};
 
 	useEffect(() => {
 		const handleResize = () => {
@@ -119,7 +132,9 @@ export default function Sidebar({ connected }: Props) {
 
 					<p className="p-2 text-sm text-zinc-500">Championship</p>
 
-					<SeriesPicker className="px-1" selected={series} onSelect={setSeries} layoutId="sidebar-series" />
+					<SeriesPicker className="px-1" selected={series} onSelect={selectSeries} layoutId="sidebar-series" />
+
+					{replaying && <p className="px-2 pt-1 text-xs text-violet-400">Replaying a past session</p>}
 
 					<p className="mt-4 p-2 text-sm text-zinc-500">Live Timing</p>
 

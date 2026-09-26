@@ -60,7 +60,9 @@ cargo r -p realtime
 cargo r -p api
 ```
 
-Now when you want to develop something where you need to simulate a running race, you can use the simulator and pass it a telemetry recording of a past race.
+To develop against a past session, open it on the Replay page. With `ARCHIVE_DIR` pointing at a local copy of part of the F1 archive (`{year}/Index.json` and the session folders with their `.jsonStream` files), replays and tyre history work offline too.
+
+You can also use the simulator and pass it a telemetry recording of a past race.
 
 ```bash
 cd f1-dash/

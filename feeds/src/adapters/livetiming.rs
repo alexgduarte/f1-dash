@@ -5,16 +5,16 @@ use serde_json::{Map, Value, json};
 use tokio_stream::StreamExt;
 use tracing::{debug, info, trace};
 
-use crate::{Sink, tyres};
+use crate::{Sink, archive::Archive, tyres};
 
 pub struct LiveTimingSource {
     /// Host and path of the SignalR Core endpoint, without scheme.
     pub host: &'static str,
     pub hub: &'static str,
     pub topics: &'static [&'static str],
-    /// Base URL of the static archive of past sessions, used to reconstruct
-    /// the tyre sets a driver has left over the weekend.
-    pub archive: Option<&'static str>,
+    /// Whether past sessions are in the F1 archive, used to reconstruct the
+    /// tyre sets a driver has left over the weekend.
+    pub archive: bool,
 }
 
 pub const F1: LiveTimingSource = LiveTimingSource {
@@ -40,7 +40,7 @@ pub const F1: LiveTimingSource = LiveTimingSource {
         "TeamRadio",
         "ChampionshipPrediction",
     ],
-    archive: Some("https://livetiming.formula1.com/static/"),
+    archive: true,
 };
 
 /// Topic names that are not valid JS identifiers are renamed so the front end
@@ -77,7 +77,7 @@ pub async fn run(source: &LiveTimingSource, sink: &Sink) -> Result<(), Error> {
     sink.reset(normalize_initial(initial)).await;
 
     let session_info = sink.topic("SessionInfo").await;
-    let mut tyre_sets = tyres::Tracker::start(source.archive, session_info);
+    let mut tyre_sets = tyres::Tracker::start(source.archive.then(Archive::f1), session_info);
 
     if let Some(update) = tyre_sets.recompute(sink.topic("TimingAppData").await.as_ref()) {
         sink.update(update).await;

@@ -1,5 +1,7 @@
 import type { MessageInitial, MessageUpdate } from "@/types/message.type";
 import type { Round } from "@/types/schedule.type";
+import type { ArchiveMeeting } from "@/types/replay.type";
+import type { ReplayRequest } from "@/stores/useReplayStore";
 import type { SeriesId } from "@/lib/series";
 
 import { env } from "@/env";
@@ -18,14 +20,8 @@ export type FeedHandlers = {
 
 type NativeFeedMessage = { kind: "initial" | "update"; data: string } | { kind: "status"; data: boolean };
 
-const subscribeWeb = (series: SeriesId, handlers: FeedHandlers): (() => void) => {
-	if (!env.NEXT_PUBLIC_LIVE_URL) {
-		console.error("NEXT_PUBLIC_LIVE_URL is not set, cannot connect to the realtime service");
-		handlers.onConnection(false);
-		return () => {};
-	}
-
-	const sse = new EventSource(`${env.NEXT_PUBLIC_LIVE_URL}/api/realtime?series=${series}`);
+const listenToEventSource = (url: string, handlers: FeedHandlers): (() => void) => {
+	const sse = new EventSource(url);
 
 	// connected means the server reached the timing feed, not just that this stream is open
 	sse.onerror = () => handlers.onConnection(false);
@@ -37,7 +33,17 @@ const subscribeWeb = (series: SeriesId, handlers: FeedHandlers): (() => void) =>
 	return () => sse.close();
 };
 
-const subscribeNative = (series: SeriesId, handlers: FeedHandlers): (() => void) => {
+const liveUrl = (): string | null => {
+	if (!env.NEXT_PUBLIC_LIVE_URL) {
+		console.error("NEXT_PUBLIC_LIVE_URL is not set, cannot connect to the realtime service");
+		return null;
+	}
+
+	return env.NEXT_PUBLIC_LIVE_URL;
+};
+
+/** Subscribes through a native command that streams into a channel. */
+const listenToChannel = (command: string, args: Record<string, unknown>, handlers: FeedHandlers): (() => void) => {
 	let closed = false;
 	let unsubscribe: (() => void) | null = null;
 
@@ -63,13 +69,13 @@ const subscribeNative = (series: SeriesId, handlers: FeedHandlers): (() => void)
 		};
 
 		try {
-			const id = await invoke<number>("feed_subscribe", { series, channel });
+			const id = await invoke<number>(command, { ...args, channel });
 			const stop = () => void invoke("feed_unsubscribe", { id });
 
 			if (closed) stop();
 			else unsubscribe = stop;
 		} catch (error) {
-			console.error("failed to subscribe to native feed", error);
+			console.error(`${command} failed`, error);
 			handlers.onConnection(false);
 		}
 	})();
@@ -81,8 +87,35 @@ const subscribeNative = (series: SeriesId, handlers: FeedHandlers): (() => void)
 };
 
 /** Subscribes to a series' live feed. Returns an unsubscribe function. */
-export const subscribeFeed = (series: SeriesId, handlers: FeedHandlers): (() => void) =>
-	isNative() ? subscribeNative(series, handlers) : subscribeWeb(series, handlers);
+export const subscribeFeed = (series: SeriesId, handlers: FeedHandlers): (() => void) => {
+	if (isNative()) return listenToChannel("feed_subscribe", { series }, handlers);
+
+	const base = liveUrl();
+	if (!base) {
+		handlers.onConnection(false);
+		return () => {};
+	}
+
+	return listenToEventSource(`${base}/api/realtime?series=${series}`, handlers);
+};
+
+/** Plays back a past session from the archive. Returns an unsubscribe function. */
+export const subscribeReplay = (path: string, request: ReplayRequest, handlers: FeedHandlers): (() => void) => {
+	const full = { path, from: request.from, speed: request.speed, paused: request.paused };
+
+	if (isNative()) return listenToChannel("replay_subscribe", { request: full }, handlers);
+
+	const base = liveUrl();
+	if (!base) {
+		handlers.onConnection(false);
+		return () => {};
+	}
+
+	const params = new URLSearchParams({ path, speed: String(request.speed), paused: String(request.paused) });
+	if (request.from !== undefined) params.set("from", String(Math.round(request.from)));
+
+	return listenToEventSource(`${base}/api/replay?${params}`, handlers);
+};
 
 const fetchApi = async <T>(path: string): Promise<T | null> => {
 	if (!env.NEXT_PUBLIC_API_URL) {
@@ -101,6 +134,18 @@ const fetchApi = async <T>(path: string): Promise<T | null> => {
 const invokeNative = async <T>(command: string, args: Record<string, unknown>): Promise<T> => {
 	const { invoke } = await import("@tauri-apps/api/core");
 	return invoke<T>(command, args);
+};
+
+export const fetchReplaySessions = async (year: number): Promise<ArchiveMeeting[]> => {
+	if (isNative()) return invokeNative<ArchiveMeeting[]>("replay_sessions", { year });
+
+	const base = liveUrl();
+	if (!base) throw new Error("NEXT_PUBLIC_LIVE_URL is not set");
+
+	const res = await fetch(`${base}/api/replay/sessions?year=${year}`, { cache: "no-store" });
+	if (!res.ok) throw new Error(`replay sessions responded with ${res.status}`);
+
+	return res.json();
 };
 
 export const fetchSchedule = async (series: SeriesId): Promise<Round[] | null> =>

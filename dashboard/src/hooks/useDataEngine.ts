@@ -46,6 +46,7 @@ export const useDataEngine = ({ updateState, updatePosition, updateCarData, rese
 		TeamRadio: useStatefulBuffer(),
 		ChampionshipPrediction: useStatefulBuffer(),
 		TyreSets: useStatefulBuffer(),
+		Replay: useStatefulBuffer(),
 	};
 
 	const carBuffer = useBuffer<CarsData>();
@@ -83,6 +84,9 @@ export const useDataEngine = ({ updateState, updatePosition, updateCarData, rese
 		// An initial message is either a new session (start over) or a fresh
 		// snapshot of the same session after the connection lagged or dropped
 		// (replace each topic, but keep the delay buffers intact).
+		// an empty state carries nothing to show and must not wipe what is there
+		if (Object.keys(initial).length === 0) return;
+
 		const session = sessionIdentity(initial);
 		const sameSession = session !== null && session === sessionRef.current;
 		sessionRef.current = session;

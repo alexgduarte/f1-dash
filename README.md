@@ -26,8 +26,13 @@ It runs in the browser and as a native app on Windows, macOS (Apple Silicon and 
 | Weather readings and rain radar | ✓ | ✓ | ✓ (when the feed has weather) |
 | Session clock, track status | ✓ | ✓ | ✓ (including FCY and Code 60) |
 | Schedule | ✓ | ✓ | ✓ |
+| Session replay | ✓ | – | – |
 
 A dash means the series' feed does not publish that data.
+
+### Session replay
+
+Any finished F1 session since 2018 can be watched again from the live timing archive: pick it on the Replay page, then play, pause, change the speed (up to 32×) or drag the timeline. Replays go through the same dashboard as live sessions, tyre sets and team radio included. Car telemetry and positions are not replayed; they are large and often missing from the archive.
 
 ### Tyre sets for the race
 
@@ -48,7 +53,7 @@ The dashboard and the weather page show [RainViewer](https://www.rainviewer.com/
 ```
 dashboard/          Next.js front end, shared by the website and the apps
 dashboard/src-tauri Tauri app (desktop and mobile) that runs the feeds in-process
-feeds/              Feed adapters for every series, the tyre set tracker, schedules
+feeds/              Feed adapters for every series, the tyre set tracker, replays, schedules
 signalr/            SignalR clients (ASP.NET Core for F1, classic for F2/F3/F1 Academy)
 realtime/           Server that runs the feeds for the website (server-sent events)
 api/                Server for schedules

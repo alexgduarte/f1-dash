@@ -137,6 +137,15 @@ impl FeedHub {
             match phase {
                 Phase::Start => {
                     let (initial, rx) = hub.snapshot().await;
+
+                    // nothing published yet: the adapter's first reset
+                    // arrives as the initial state instead, so clients never
+                    // mistake an empty snapshot for a new session
+                    if &*initial == "{}" {
+                        let status = HubMessage::Status(hub.connected());
+                        return Some((status, (hub, Phase::Live(rx))));
+                    }
+
                     Some((HubMessage::Initial(initial), (hub, Phase::Status(rx))))
                 }
                 Phase::Status(rx) => {
@@ -153,6 +162,22 @@ impl FeedHub {
                     Err(RecvError::Closed) => None,
                 },
             }
+        })
+    }
+
+    /// Runs something other than the series adapter into this hub, such as a
+    /// replay. The hub counts as connected while it has published a state.
+    pub fn spawn_with<F, Fut>(&self, task: F) -> JoinHandle<()>
+    where
+        F: FnOnce(Sink) -> Fut,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        let sink = self.sink.clone();
+        let run = task(sink.clone());
+
+        tokio::spawn(async move {
+            run.await;
+            sink.set_connected(false);
         })
     }
 
@@ -224,7 +249,7 @@ mod tests {
     async fn lagging_subscriber_gets_fresh_snapshot() {
         let hub = FeedHub::new(Series::F1);
         let mut stream = Box::pin(hub.stream());
-        assert!(matches!(stream.next().await, Some(HubMessage::Initial(_))));
+        // nothing published yet, so no initial state
         assert!(matches!(
             stream.next().await,
             Some(HubMessage::Status(false))

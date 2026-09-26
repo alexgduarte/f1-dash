@@ -1,3 +1,5 @@
+import type { ReplayStatus } from "./replay.type";
+
 export type State = {
 	Heartbeat?: Heartbeat;
 	ExtrapolatedClock?: ExtrapolatedClock;
@@ -16,6 +18,8 @@ export type State = {
 	TeamRadio?: TeamRadio;
 	ChampionshipPrediction?: ChampionshipPrediction;
 	TyreSets?: TyreSets;
+	/** only while replaying a past session */
+	Replay?: ReplayStatus;
 };
 
 export type Heartbeat = {
