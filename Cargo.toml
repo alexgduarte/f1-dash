@@ -1,8 +1,12 @@
 [workspace]
-members = ["shared", "realtime", "api", "simulator", "signalr"]
+members = ["shared", "realtime", "api", "simulator", "signalr", "feeds"]
 default-members = ["realtime", "api"]
+# the native app has its own lock file and target, so server builds never
+# pull in the webview toolkits
+exclude = ["dashboard/src-tauri"]
 resolver = "2"
 
 [workspace.dependencies]
 shared = { path = "shared" }
 signalr = { path = "signalr" }
+feeds = { path = "feeds" }

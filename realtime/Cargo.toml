@@ -7,7 +7,7 @@ authors = ["slowlydev"]
 
 [dependencies]
 shared = { workspace = true }
-signalr = { workspace = true }
+feeds = { workspace = true }
 
 anyhow = "1.0.98"
 axum = { version = "0.8.4", features = ["http2"] }
@@ -20,4 +20,3 @@ tokio-stream = { version = "0.1.17", features = ["sync"] }
 
 tower-http = { version = "0.6.4", features = ["cors"] }
 tracing = "0.1.41"
-async-stream = "0.3.6"

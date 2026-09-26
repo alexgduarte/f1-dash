@@ -9,6 +9,7 @@ COPY Cargo.lock .
 COPY Cargo.toml .
 
 COPY realtime realtime
+COPY feeds feeds
 COPY shared shared
 COPY signalr signalr
 COPY api api

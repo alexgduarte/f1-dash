@@ -1,53 +1,80 @@
-use std::{env, sync::Arc};
+use std::{collections::HashMap, env, sync::Arc};
 
 use anyhow::Error;
 use axum::{
-    Router,
-    http::{HeaderValue, Method},
+    Json, Router,
+    http::{HeaderValue, Method, StatusCode},
     routing::get,
 };
-use tokio::{net::TcpListener, sync::broadcast::Sender};
+use feeds::{FeedHub, Series};
+use serde::Deserialize;
+use serde_json::json;
+use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tracing::info;
-
-use crate::services::state_service::StateService;
 
 mod connections;
 mod current;
 mod drivers;
 mod health;
 mod realtime;
+mod series;
 
-pub struct Context {
-    pub state_service: StateService,
-    pub tx: Sender<String>,
+pub type Hubs = Arc<HashMap<Series, FeedHub>>;
+
+#[derive(Debug, Deserialize)]
+pub struct SeriesQuery {
+    series: Option<String>,
 }
 
-pub async fn start(state_service: StateService, tx: Sender<String>) -> Result<(), Error> {
+pub type ApiError = (StatusCode, Json<serde_json::Value>);
+
+impl SeriesQuery {
+    /// Resolves `?series=` (default `f1`) to an enabled hub.
+    pub fn hub(&self, hubs: &Hubs) -> Result<FeedHub, ApiError> {
+        let series = match self.series.as_deref() {
+            None | Some("") => Series::F1,
+            Some(id) => id.parse().map_err(|err: Error| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": err.to_string() })),
+                )
+            })?,
+        };
+
+        hubs.get(&series).cloned().ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(
+                    json!({ "error": format!("series '{series}' is not enabled on this server") }),
+                ),
+            )
+        })
+    }
+}
+
+pub async fn start(hubs: Hubs) -> Result<(), Error> {
     let addr = env::var("ADDRESS").unwrap_or_else(|_| "0.0.0.0:80".to_string());
-
-    let context = Arc::new(Context { state_service, tx });
-
-    let cors = cors_layer()?;
 
     let app = Router::new()
         .route("/api/health", get(health::health_check))
+        .route("/api/series", get(series::list))
         .route("/api/realtime", get(realtime::sse_stream))
         .route("/api/current", get(current::current_state))
         .route("/api/drivers", get(drivers::drivers))
         .route("/api/connections", get(connections::current_connections))
-        .with_state(context)
-        .layer(cors)
+        .with_state(hubs)
+        .layer(cors_layer())
         .into_make_service();
 
-    info!(addr, "starting norths http server");
+    info!(addr, "starting realtime http server");
 
     axum::serve(TcpListener::bind(addr).await?, app).await?;
 
     Ok(())
 }
 
-pub fn cors_layer() -> Result<CorsLayer, Error> {
+pub fn cors_layer() -> CorsLayer {
     let origin = env::var("ORIGIN").unwrap_or_else(|_| "https://f1-dash.com".to_string());
 
     let origins = origin
@@ -55,7 +82,7 @@ pub fn cors_layer() -> Result<CorsLayer, Error> {
         .filter_map(|o| HeaderValue::from_str(o).ok())
         .collect::<Vec<HeaderValue>>();
 
-    Ok(CorsLayer::new()
+    CorsLayer::new()
         .allow_origin(origins)
-        .allow_methods([Method::GET, Method::CONNECT]))
+        .allow_methods([Method::GET, Method::CONNECT])
 }

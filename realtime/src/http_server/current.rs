@@ -1,17 +1,14 @@
-use std::sync::Arc;
+use axum::{
+    Json,
+    extract::{Query, State},
+};
+use serde_json::Value;
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse};
+use crate::http_server::{ApiError, Hubs, SeriesQuery};
 
-use crate::http_server::Context;
-
-pub async fn current_state(State(ctx): State<Arc<Context>>) -> impl IntoResponse {
-    match ctx.state_service.get_state().await {
-        Ok(state) => (StatusCode::OK, axum::Json(state)),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(serde_json::json!({
-                "error": format!("Failed to get current state: {}", e),
-            })),
-        ),
-    }
+pub async fn current_state(
+    State(hubs): State<Hubs>,
+    Query(query): Query<SeriesQuery>,
+) -> Result<Json<Value>, ApiError> {
+    Ok(Json(query.hub(&hubs)?.state().await))
 }

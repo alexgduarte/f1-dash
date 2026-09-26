@@ -1,6 +1,10 @@
 services:
+  # built from this repository; the upstream images on ghcr.io do not have the
+  # extra championships, tyre sets or schedule changes
   api:
-    image: ghcr.io/slowlydev/f1-dash-api:latest
+    build:
+      context: .
+      target: api
     ports:
       - 4010:80
     environment:
@@ -9,16 +13,21 @@ services:
       - ORIGIN=http://localhost:3000
 
   realtime:
-    image: ghcr.io/slowlydev/f1-dash-realtime:latest
+    build:
+      context: .
+      target: realtime
     ports:
       - 4000:80
     environment:
-      - RUST_LOG=realtime=debug
+      - RUST_LOG=realtime=debug,feeds=info
       - ADDRESS=0.0.0.0:80
       - ORIGIN=http://localhost:3000
+      # championships to ingest: f1,f2,f3,f1a,wec (default: all)
+      - SERIES=f1,f2,f3,f1a,wec
 
   web:
-    image: ghcr.io/slowlydev/f1-dash:latest
+    build:
+      context: ./dashboard
     depends_on:
       - realtime
       - api
@@ -26,4 +35,5 @@ services:
       - 3000:3000
     environment:
       - NEXT_PUBLIC_LIVE_URL=http://localhost:4000
-      - API_URL=http://localhost:4010
+      # the browser fetches schedules from here, so it must be reachable from it
+      - NEXT_PUBLIC_API_URL=http://localhost:4010

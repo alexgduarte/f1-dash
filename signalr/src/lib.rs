@@ -1,4 +1,4 @@
-use std::{env, str::FromStr};
+use std::{env, str::FromStr, time::Duration};
 
 use futures::{SinkExt, Stream};
 use reqwest::{
@@ -12,10 +12,17 @@ use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest, http::R
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
+pub mod classic;
+
 const RECORD_SEPARATOR: &str = "\u{001E}";
 
 const INVOCATION: i32 = 1;
 const COMPLETION: i32 = 3;
+const PING: i32 = 6;
+
+/// ASP.NET Core SignalR drops clients it has not heard from within
+/// `ClientTimeoutInterval` (30s by default); the official clients ping every 15s.
+const KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(15);
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -85,7 +92,18 @@ pub struct SignalrClient {
     pub stream: WsStream,
 }
 
+/// Installs the rustls crypto provider once per process. rustls refuses to pick
+/// one on its own when more than one backend is compiled in, which happens
+/// easily once the native app pulls in its own dependency tree.
+pub(crate) fn ensure_crypto_provider() {
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    }
+}
+
 pub async fn create_client(base_url: &str, _hub: &str) -> Result<SignalrClient, anyhow::Error> {
+    ensure_crypto_provider();
+
     let negotiation = negotiate(base_url).await?;
 
     let mut ws_url = Url::parse(&format!("wss://{}", base_url))?;
@@ -125,7 +143,7 @@ pub async fn create_client(base_url: &str, _hub: &str) -> Result<SignalrClient, 
 
     match &handshake_response {
         Message::Text(txt) => {
-            let msg = deserialize::<Value>(&txt);
+            let msg = deserialize::<Value>(txt);
 
             match msg {
                 Ok(parsed) => {
@@ -261,8 +279,49 @@ pub struct UpdateArgs {
     pub timestamp: String,
 }
 
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Splits the socket and pings from the write half until the returned read
+/// half is dropped.
+fn with_keep_alive(
+    client: SignalrClient,
+) -> impl Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> {
+    let (mut write, read) = futures::StreamExt::split(client.stream);
+
+    let task = tokio::spawn(async move {
+        let Ok(ping) = serialize(&serde_json::json!({ "type": PING })) else {
+            return;
+        };
+
+        let mut interval = tokio::time::interval(KEEP_ALIVE_INTERVAL);
+        interval.tick().await;
+
+        loop {
+            interval.tick().await;
+
+            if let Err(err) = write.send(Message::text(ping.clone())).await {
+                debug!(?err, "keep-alive ping failed, stopping");
+                break;
+            }
+        }
+    });
+
+    let guard = AbortOnDrop(task);
+
+    read.map(move |message| {
+        let _keep_alive = &guard;
+        message
+    })
+}
+
 pub fn listen(client: SignalrClient) -> impl Stream<Item = Vec<UpdateArgs>> {
-    client.stream.filter_map(|message| match message {
+    with_keep_alive(client).filter_map(|message| match message {
         Ok(Message::Text(txt)) => {
             let messages = split_messages(&txt);
 
@@ -309,7 +368,7 @@ pub fn listen(client: SignalrClient) -> impl Stream<Item = Vec<UpdateArgs>> {
 }
 
 pub fn listen_raw(client: SignalrClient) -> impl Stream<Item = String> {
-    client.stream.filter_map(|message| match message {
+    with_keep_alive(client).filter_map(|message| match message {
         Ok(Message::Text(txt)) => Some(txt.to_string()),
         Ok(_) => None,
         Err(err) => {

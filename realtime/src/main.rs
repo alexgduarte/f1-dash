@@ -1,43 +1,39 @@
+use std::{collections::HashMap, env, sync::Arc};
+
 use anyhow::Error;
+use feeds::{FeedHub, Series};
 use shared::tracing_subscriber;
-use tokio::sync::broadcast;
-use tracing::warn;
+use tracing::info;
 
-use crate::services::state_service::StateService;
-
-mod f1;
 mod http_server;
-mod services {
-    pub mod state_service;
+
+/// Series to ingest, from `SERIES` (comma separated ids, default: all).
+fn enabled_series() -> Result<Vec<Series>, Error> {
+    match env::var("SERIES") {
+        Ok(list) if !list.trim().is_empty() => list
+            .split(',')
+            .filter(|s| !s.trim().is_empty())
+            .map(str::parse)
+            .collect(),
+        _ => Ok(Series::ALL.to_vec()),
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     tracing_subscriber();
 
-    let state_service = StateService::new();
+    let hubs: HashMap<Series, FeedHub> = enabled_series()?
+        .into_iter()
+        .map(|series| (series, FeedHub::new(series)))
+        .collect();
 
-    let (sender, _reciver) = broadcast::channel::<String>(16);
-
-    {
-        let state_service = state_service.clone();
-        let sender = sender.clone();
-        tokio::spawn(async move {
-            loop {
-                match f1::ingest_f1(state_service.clone(), sender.clone()).await {
-                    Ok(_) => {}
-                    Err(err) => {
-                        warn!(?err, "ingest_f1 method returned error");
-                    }
-                };
-
-                warn!("ingest_f1 method returned, possible session change, restarting...");
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-            }
-        });
+    for hub in hubs.values() {
+        info!(series = %hub.series(), "starting feed");
+        hub.spawn();
     }
 
-    http_server::start(state_service, sender).await?;
+    http_server::start(Arc::new(hubs)).await?;
 
     Ok(())
 }

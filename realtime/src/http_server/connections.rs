@@ -1,19 +1,24 @@
-use std::sync::Arc;
+use std::collections::BTreeMap;
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse};
+use axum::{Json, extract::State};
 use serde::Serialize;
 
-use crate::http_server::Context;
+use crate::http_server::Hubs;
 
 #[derive(Debug, Serialize)]
-struct ConnectionsResponse {
+pub struct ConnectionsResponse {
     connections: usize,
+    series: BTreeMap<&'static str, usize>,
 }
 
-pub async fn current_connections(State(ctx): State<Arc<Context>>) -> impl IntoResponse {
-    let connections = ctx.tx.receiver_count();
+pub async fn current_connections(State(hubs): State<Hubs>) -> Json<ConnectionsResponse> {
+    let series: BTreeMap<&'static str, usize> = hubs
+        .iter()
+        .map(|(series, hub)| (series.id(), hub.receiver_count()))
+        .collect();
 
-    let response = ConnectionsResponse { connections };
-
-    (StatusCode::OK, axum::Json(response))
+    Json(ConnectionsResponse {
+        connections: series.values().sum(),
+        series,
+    })
 }
