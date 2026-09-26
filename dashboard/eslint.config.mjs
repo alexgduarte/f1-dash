@@ -11,7 +11,7 @@ const compat = new FlatCompat({
 const eslintConfig = [...nextCoreWebVitals, ...next, ...nextTypescript, ...compat.config({
     extends: ["prettier"]
 }), {
-    ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts"]
+    ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "src-tauri/target/**", "src-tauri/gen/**"]
 }];
 
 export default eslintConfig;

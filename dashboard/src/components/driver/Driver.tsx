@@ -43,7 +43,8 @@ export default function Driver({ driver, timingDriver, position }: Props) {
 	const sessionPart = useDataStore((state) => state.state?.TimingData?.SessionPart);
 	const timingStatsDriver = useDataStore((state) => state.state?.TimingStats?.Lines[driver.RacingNumber]);
 	const appTimingDriver = useDataStore((state) => state.state?.TimingAppData?.Lines[driver.RacingNumber]);
-	const carData = useDataStore((state) => (state?.carsData ? state.carsData[driver.RacingNumber].Channels : undefined));
+	const hasTyreData = useDataStore((state) => !!state.state?.TimingAppData);
+	const carData = useDataStore((state) => state?.carsData?.[driver.RacingNumber]?.Channels);
 
 	const hasFastest = timingStatsDriver?.PersonalBestLapTime.Position == 1;
 
@@ -76,8 +77,16 @@ export default function Driver({ driver, timingDriver, position }: Props) {
 					inPit={timingDriver.InPit}
 					pitOut={timingDriver.PitOut}
 				/>
-				<DriverTire stints={appTimingDriver?.Stints} />
-				<DriverInfo timingDriver={timingDriver} gridPos={appTimingDriver ? parseInt(appTimingDriver.GridPos) : 0} />
+				<DriverTire
+					stints={appTimingDriver?.Stints}
+					pitStops={timingDriver.NumberOfPitStops}
+					unavailable={!hasTyreData}
+				/>
+				<DriverInfo
+					timingDriver={timingDriver}
+					gridPos={appTimingDriver?.GridPos ? parseInt(appTimingDriver.GridPos) : 0}
+					carClass={driver.Class}
+				/>
 				<DriverGap timingDriver={timingDriver} sessionPart={sessionPart} />
 				<DriverLapTime last={timingDriver.LastLapTime} best={timingDriver.BestLapTime} hasFastest={hasFastest} />
 				<DriverMiniSectors sectors={timingDriver.Sectors} bestSectors={timingStatsDriver?.BestSectors} />

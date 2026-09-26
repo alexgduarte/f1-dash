@@ -1,31 +1,20 @@
-import { connection } from "next/server";
 import { utc } from "moment";
 
 import Countdown from "@/components/schedule/Countdown";
 import Round from "@/components/schedule/Round";
 
-import { env } from "@/env";
-import type { Round as RoundType } from "@/types/schedule.type";
+import type { Round as RoundType, Session } from "@/types/schedule.type";
 
-export const getNext = async () => {
-	await connection();
-
-	try {
-		const nextReq = await fetch(`${env.API_URL}/api/schedule/next`, {
-			cache: "no-store",
-		});
-		const next: RoundType = await nextReq.json();
-
-		return next;
-	} catch (e) {
-		console.error("error fetching next round", e);
-		return null;
-	}
+type Props = {
+	next: RoundType | null;
 };
 
-export default async function NextRound() {
-	const next = await getNext();
+// the headline race of a weekend: "Race" in F1 and WEC, "Feature Race" in F2 and F3
+const findMainRace = (sessions: Session[]): Session | undefined =>
+	sessions.findLast((s) => s.kind.toLowerCase().includes("race") && !s.kind.toLowerCase().includes("sprint")) ??
+	sessions.findLast((s) => s.kind.toLowerCase().includes("race"));
 
+export default function NextRound({ next }: Props) {
 	if (!next) {
 		return (
 			<div className="flex h-44 flex-col items-center justify-center">
@@ -34,8 +23,8 @@ export default async function NextRound() {
 		);
 	}
 
-	const nextSession = next.sessions.filter((s) => utc(s.start) > utc() && s.kind.toLowerCase() !== "race")[0];
-	const nextRace = next.sessions.find((s) => s.kind.toLowerCase() == "race");
+	const nextRace = findMainRace(next.sessions);
+	const nextSession = next.sessions.filter((s) => utc(s.start) > utc() && s !== nextRace)[0];
 
 	return (
 		<div className="grid grid-cols-1 gap-8 sm:grid-cols-2">

@@ -1,28 +1,46 @@
-import { Suspense } from "react";
+"use client";
+
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useSchedule } from "@/hooks/useSchedule";
+import { getSeries } from "@/lib/series";
 
 import NextRound from "@/components/schedule/NextRound";
 import Schedule from "@/components/schedule/Schedule";
+import SeriesPicker from "@/components/SeriesPicker";
 
-export default async function SchedulePage() {
+export default function SchedulePage() {
+	const series = useSettingsStore((state) => state.series);
+	const setSeries = useSettingsStore((state) => state.setSeries);
+
+	const { schedule, next, loading, error } = useSchedule(series);
+
 	return (
 		<div>
-			<div className="my-4">
-				<h1 className="text-3xl">Up Next</h1>
-				<p className="text-zinc-500">All times are local time</p>
+			<div className="my-4 flex flex-wrap items-end justify-between gap-2">
+				<div>
+					<h1 className="text-3xl">Up Next</h1>
+					<p className="text-zinc-500">{getSeries(series).name} · all times are local time</p>
+				</div>
+
+				<SeriesPicker selected={series} onSelect={setSeries} layoutId="schedule-series" />
 			</div>
 
-			<Suspense fallback={<NextRoundLoading />}>
-				<NextRound />
-			</Suspense>
+			{loading ? <NextRoundLoading /> : <NextRound next={next} />}
 
 			<div className="my-4">
 				<h1 className="text-3xl">Schedule</h1>
 				<p className="text-zinc-500">All times are local time</p>
 			</div>
 
-			<Suspense fallback={<FullScheduleLoading />}>
-				<Schedule />
-			</Suspense>
+			{loading ? (
+				<FullScheduleLoading />
+			) : error ? (
+				<div className="flex h-44 flex-col items-center justify-center">
+					<p>Failed to load the schedule</p>
+				</div>
+			) : (
+				<Schedule schedule={schedule} next={next} />
+			)}
 		</div>
 	);
 }

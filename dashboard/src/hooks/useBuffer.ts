@@ -88,6 +88,10 @@ export const useBuffer = <T>() => {
 		return bufferRef.current.length > 0 ? Math.floor((Date.now() - bufferRef.current[0].timestamp) / 1000) : 0;
 	};
 
+	const reset = () => {
+		bufferRef.current = [];
+	};
+
 	return {
 		push,
 		pushTimed,
@@ -95,5 +99,6 @@ export const useBuffer = <T>() => {
 		delayed,
 		cleanup,
 		maxDelay,
+		reset,
 	};
 };

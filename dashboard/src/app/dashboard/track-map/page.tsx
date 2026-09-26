@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import clsx from "clsx";
 
 import Map from "@/components/dashboard/Map";
+import MapUnavailable from "@/components/dashboard/MapUnavailable";
 import DriverTag from "@/components/driver/DriverTag";
 import DriverDRS from "@/components/driver/DriverDRS";
 import DriverInfo from "@/components/driver/DriverInfo";
@@ -19,6 +20,7 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 export default function TrackMap() {
 	const drivers = useDataStore((state) => state.state?.DriverList);
 	const driversTiming = useDataStore((state) => state.state?.TimingData);
+	const series = useSettingsStore((state) => state.series);
 
 	return (
 		<div className="flex flex-col-reverse md:h-full md:flex-row">
@@ -42,9 +44,7 @@ export default function TrackMap() {
 				)}
 			</div>
 
-			<div className="md:flex-1">
-				<Map />
-			</div>
+			<div className="md:flex-1">{series === "f1" ? <Map /> : <MapUnavailable />}</div>
 		</div>
 	);
 }
@@ -77,7 +77,7 @@ const TrackMapDriver = ({ position, driver, timingDriver }: TrackMapDriverProps)
 	const appTimingDriver = useDataStore((state) => state.state?.TimingAppData?.Lines[driver.RacingNumber]);
 	const hasFastest = timingStatsDriver?.PersonalBestLapTime.Position == 1;
 
-	const carData = useDataStore((state) => (state?.carsData ? state.carsData[driver.RacingNumber].Channels : undefined));
+	const carData = useDataStore((state) => state?.carsData?.[driver.RacingNumber]?.Channels);
 
 	const favoriteDriver = useSettingsStore((state) => state.favoriteDrivers.includes(driver.RacingNumber));
 

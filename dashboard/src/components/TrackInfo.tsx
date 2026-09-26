@@ -16,7 +16,7 @@ export default function TrackInfo() {
 		<div className="flex flex-row items-center gap-4 md:justify-self-end">
 			{!!lapCount && (
 				<p className="text-3xl font-extrabold whitespace-nowrap">
-					{lapCount?.CurrentLap} / {lapCount?.TotalLaps}
+					{lapCount.TotalLaps ? `${lapCount.CurrentLap} / ${lapCount.TotalLaps}` : `L${lapCount.CurrentLap}`}
 				</p>
 			)}
 

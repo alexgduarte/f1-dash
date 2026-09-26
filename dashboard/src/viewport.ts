@@ -7,4 +7,6 @@ export const viewport: Viewport = {
 	maximumScale: 10,
 	minimumScale: 0.1,
 	userScalable: true,
+	// draw under the notch and home indicator; layouts pad with the safe-area insets
+	viewportFit: "cover",
 };

@@ -1,4 +1,4 @@
-import { WeatherMap } from "@/app/dashboard/weather/map";
+import WeatherMap from "@/components/weather/WeatherMap";
 
 export default function WeatherPage() {
 	// calc height is a workaround, maybe think about refactoring sometime

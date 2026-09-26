@@ -72,9 +72,12 @@ type Props = {
 	setFrame: (id: number) => void;
 
 	playing: boolean;
+
+	/** index of the frame to show first, e.g. the latest observed one */
+	initialFrame?: number;
 };
 
-export default function Timeline({ frames, setFrame, playing }: Props) {
+export default function RadarTimeline({ frames, setFrame, playing, initialFrame = 0 }: Props) {
 	const constraintsRef = useRef<HTMLDivElement | null>(null);
 	const fullBarRef = useRef<null | HTMLDivElement>(null);
 	const scrubberRef = useRef<null | HTMLButtonElement>(null);
@@ -83,13 +86,24 @@ export default function Timeline({ frames, setFrame, playing }: Props) {
 	const currentTimePrecise = useMotionValue(0);
 	const dragControls = useDragControls();
 
-	const [dragging, setDragging] = useState<boolean>(false);
-	const [time, setTime] = useState<number>(0); // relative to DURATION
-
 	const startTime = frames[0].time;
 	const endTime = frames[frames.length - 1].time;
 
 	const DURATION = endTime - startTime;
+
+	const initialTime = (frames[initialFrame] ?? frames[0]).time - startTime;
+
+	const [dragging, setDragging] = useState<boolean>(false);
+	const [time, setTime] = useState<number>(initialTime); // relative to DURATION
+
+	// place the scrubber on the initial frame once the bar has a size
+	useEffect(() => {
+		if (DURATION <= 0) return;
+		currentTimePrecise.set(initialTime);
+		scrubberX.set(getXFromProgress({ containerRef: fullBarRef, progress: initialTime / DURATION }));
+		// only on mount, later positions come from dragging and playback
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	const currentTime = startTime + time;
 

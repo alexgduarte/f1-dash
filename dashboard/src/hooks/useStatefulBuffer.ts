@@ -15,8 +15,21 @@ export const useStatefulBuffer = <T>() => {
 		if (currentRef.current) buffer.push(currentRef.current);
 	};
 
+	// a full snapshot of the topic, applied as-is instead of merged
+	const replace = (snapshot: T) => {
+		currentRef.current = snapshot;
+		buffer.push(snapshot);
+	};
+
+	const reset = () => {
+		currentRef.current = null;
+		buffer.reset();
+	};
+
 	return {
 		push,
+		replace,
+		reset,
 		latest: buffer.latest,
 		delayed: buffer.delayed,
 		cleanup: buffer.cleanup,

@@ -26,6 +26,9 @@ export const getTrackStatusMessage = (statusCode: number | undefined): StatusMes
 		5: { message: "Red Flag", color: "bg-red-500", trackColor: "stroke-red-500", hex: "#ef4444" },
 		6: { message: "VSC Deployed", color: "bg-amber-400", trackColor: "stroke-amber-400", hex: "#fbbf24" },
 		7: { message: "VSC Ending", color: "bg-amber-400", trackColor: "stroke-amber-400", hex: "#fbbf24" },
+		// endurance racing only, set by the WEC adapter
+		8: { message: "Full Course Yellow", color: "bg-amber-400", trackColor: "stroke-amber-400", hex: "#fbbf24" },
+		9: { message: "Code 60", color: "bg-violet-500", trackColor: "stroke-violet-500", hex: "#8b5cf6" },
 	};
 
 	return statusCode ? (messageMap[statusCode] ?? messageMap[0]) : null;

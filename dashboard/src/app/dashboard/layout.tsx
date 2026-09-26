@@ -1,55 +1,53 @@
-'use client';
+"use client";
 
-import { type ReactNode } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { type ReactNode } from "react";
+import { AnimatePresence, motion } from "motion/react";
 
-import { useDataEngine } from '@/hooks/useDataEngine';
-import { useWakeLock } from '@/hooks/useWakeLock';
-import { useStores } from '@/hooks/useStores';
-import { useSocket } from '@/hooks/useSocket';
+import { useDataEngine } from "@/hooks/useDataEngine";
+import { useWakeLock } from "@/hooks/useWakeLock";
+import { useStores } from "@/hooks/useStores";
+import { useSocket } from "@/hooks/useSocket";
 
-import { useSettingsStore } from '@/stores/useSettingsStore';
-import { useSidebarStore } from '@/stores/useSidebarStore';
-import { useDataStore } from '@/stores/useDataStore';
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useSidebarStore } from "@/stores/useSidebarStore";
+import { useDataStore } from "@/stores/useDataStore";
 
-import Sidebar from '@/components/Sidebar';
-import SidenavButton from '@/components/SidenavButton';
-import SessionInfo from '@/components/SessionInfo';
-import WeatherInfo from '@/components/WeatherInfo';
-import TrackInfo from '@/components/TrackInfo';
-import DelayInput from '@/components/DelayInput';
-import DelayTimer from '@/components/DelayTimer';
-import ConnectionStatus from '@/components/ConnectionStatus';
+import Sidebar from "@/components/Sidebar";
+import SidenavButton from "@/components/SidenavButton";
+import SessionInfo from "@/components/SessionInfo";
+import WeatherInfo from "@/components/WeatherInfo";
+import TrackInfo from "@/components/TrackInfo";
+import DelayInput from "@/components/DelayInput";
+import DelayTimer from "@/components/DelayTimer";
+import ConnectionStatus from "@/components/ConnectionStatus";
 
 type Props = {
 	children: ReactNode;
 };
 
 export default function DashboardLayout({ children }: Props) {
+	const series = useSettingsStore((state) => state.series);
+
 	const stores = useStores();
-	const { handleInitial, handleUpdate, maxDelay } = useDataEngine(stores);
-	const { connected } = useSocket({ handleInitial, handleUpdate });
+	const { handleInitial, handleUpdate, reset, maxDelay } = useDataEngine(stores);
+	const { connected } = useSocket({ series, handleInitial, handleUpdate, reset });
 
 	const delay = useSettingsStore((state) => state.delay);
 	const syncing = delay > maxDelay;
 
 	useWakeLock();
 
-	const ended = useDataStore(({ state }) => state?.SessionStatus?.Status === 'Ends');
+	const ended = useDataStore(({ state }) => state?.SessionStatus?.Status === "Ends");
 
 	return (
-		<div className="flex h-screen w-full md:pt-2 md:pr-2 md:pb-2">
+		<div className="flex h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full md:pt-2 md:pr-2 md:pb-2">
 			<Sidebar key="sidebar" connected={connected} />
 
 			<motion.div layout="size" className="flex h-full w-full flex-1 flex-col md:gap-2">
 				<DesktopStaticBar show={!syncing || ended} />
 				<MobileStaticBar show={!syncing || ended} connected={connected} />
 
-				<div
-					className={
-						!syncing || ended ? 'no-scrollbar w-full flex-1 overflow-auto md:rounded-lg' : 'hidden'
-					}
-				>
+				<div className={!syncing || ended ? "no-scrollbar w-full flex-1 overflow-auto md:rounded-lg" : "hidden"}>
 					<MobileDynamicBar />
 					{children}
 				</div>
@@ -57,8 +55,8 @@ export default function DashboardLayout({ children }: Props) {
 				<div
 					className={
 						syncing && !ended
-							? 'flex h-full flex-1 flex-col items-center justify-center gap-2 border-zinc-800 md:rounded-lg md:border'
-							: 'hidden'
+							? "flex h-full flex-1 flex-col items-center justify-center gap-2 border-zinc-800 md:rounded-lg md:border"
+							: "hidden"
 					}
 				>
 					<h1 className="my-20 text-center text-5xl font-bold">Syncing...</h1>

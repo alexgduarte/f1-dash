@@ -1,9 +1,14 @@
 import { persist, createJSONStorage, subscribeWithSelector } from "zustand/middleware";
 import { create } from "zustand";
 
+import { DEFAULT_SERIES, type SeriesId } from "@/lib/series";
+
 type SpeedUnit = "metric" | "imperial";
 
 type SettingsStore = {
+	series: SeriesId;
+	setSeries: (series: SeriesId) => void;
+
 	delay: number;
 	setDelay: (delay: number) => void;
 
@@ -49,6 +54,10 @@ export const useSettingsStore = create<SettingsStore>()(
 	subscribeWithSelector(
 		persist(
 			(set) => ({
+				series: DEFAULT_SERIES,
+				// a delay is tuned to one broadcast, so it does not carry over to another series
+				setSeries: (series: SeriesId) => set({ series, delay: 0 }),
+
 				delay: 0,
 				setDelay: (delay: number) => set({ delay }),
 

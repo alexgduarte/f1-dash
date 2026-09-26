@@ -10,6 +10,7 @@ import { useSidebarStore } from "@/stores/useSidebarStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 
 import ConnectionStatus from "@/components/ConnectionStatus";
+import SeriesPicker from "@/components/SeriesPicker";
 import DelayInput from "@/components/DelayInput";
 import SidenavButton from "@/components/SidenavButton";
 import DelayTimer from "@/components/DelayTimer";
@@ -56,6 +57,8 @@ export default function Sidebar({ connected }: Props) {
 	const unpin = useSidebarStore((state) => state.unpin);
 
 	const oledMode = useSettingsStore((state) => state.oledMode);
+	const series = useSettingsStore((state) => state.series);
+	const setSeries = useSettingsStore((state) => state.setSeries);
 
 	useEffect(() => {
 		const handleResize = () => {
@@ -87,7 +90,7 @@ export default function Sidebar({ connected }: Props) {
 			</AnimatePresence>
 
 			<motion.div
-				className="no-scrollbar fixed top-0 bottom-0 left-0 z-40 flex overflow-y-auto"
+				className="no-scrollbar fixed top-0 bottom-0 left-0 z-40 flex overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
 				//
 				onHoverEnd={!pinned ? () => close() : undefined}
 				onHoverStart={!pinned ? () => open() : undefined}
@@ -114,7 +117,11 @@ export default function Sidebar({ connected }: Props) {
 						<SidenavButton className="md:hidden" onClick={() => close()} />
 					</div>
 
-					<p className="p-2 text-sm text-zinc-500">Live Timing</p>
+					<p className="p-2 text-sm text-zinc-500">Championship</p>
+
+					<SeriesPicker className="px-1" selected={series} onSelect={setSeries} layoutId="sidebar-series" />
+
+					<p className="mt-4 p-2 text-sm text-zinc-500">Live Timing</p>
 
 					<div className="flex flex-col gap-1">
 						{liveTimingItems.map((item) => (

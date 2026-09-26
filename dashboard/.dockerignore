@@ -12,3 +12,7 @@ node_modules/
 dockerfile
 
 .prettier.config.cjs
+
+# the native app is built separately
+src-tauri/
+out/

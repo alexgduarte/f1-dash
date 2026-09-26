@@ -12,6 +12,11 @@
 	--color-pane: oklch(18% 0.005 285.82);
 }
 
+/* phones with a notch or home indicator (the page opts in with viewport-fit=cover) */
+body {
+	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
 @layer utilities {
 	.no-scrollbar::-webkit-scrollbar {
 		display: none;

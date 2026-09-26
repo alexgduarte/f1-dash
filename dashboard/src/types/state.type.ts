@@ -15,6 +15,7 @@ export type State = {
 	TimingData?: TimingData;
 	TeamRadio?: TeamRadio;
 	ChampionshipPrediction?: ChampionshipPrediction;
+	TyreSets?: TyreSets;
 };
 
 export type Heartbeat = {
@@ -54,10 +55,41 @@ export type TimingAppDataDriver = {
 	GridPos: string;
 };
 
+export type Compound = "SOFT" | "MEDIUM" | "HARD" | "INTERMEDIATE" | "WET";
+
 export type Stint = {
+	/** age of the set now, including laps from earlier sessions */
 	TotalLaps?: number;
-	Compound?: "SOFT" | "MEDIUM" | "HARD" | "INTERMEDIATE" | "WET";
-	New?: string; // TRUE | FALSE
+	/** age of the set when it was fitted */
+	StartLaps?: number;
+	Compound?: Compound;
+	New?: string; // "true" | "false"
+	TyresNotChanged?: string; // "0" | "1"
+};
+
+/** Derived by the feed adapter from every session of the weekend so far. */
+export type TyreSets = {
+	Format: "standard" | "sprint";
+	Allocation: Record<Compound, number>;
+	Sessions: { Name: string; Loaded: boolean }[];
+	HistoryLoaded: boolean;
+	Lines: {
+		[key: string]: {
+			Sets: TyreSet[];
+			/** what the return rules leave, when every session was read; a different count flags bad data */
+			ExpectedSlickSets: number | null;
+		};
+	};
+};
+
+export type TyreSet = {
+	Compound: Compound;
+	New: boolean;
+	Laps: number;
+	Sessions: string[];
+	ReturnedAfter: string | null;
+	ReturnEstimated: boolean;
+	Fitted: boolean;
 };
 
 export type WeatherData = {
@@ -96,6 +128,12 @@ export type Driver = {
 	Reference: string;
 	HeadshotUrl: string;
 	CountryCode: string;
+	/** WEC: HYPERCAR, LMP2 or LMGT3 */
+	Class?: string;
+	/** WEC: car make */
+	Vehicle?: string;
+	/** WEC: every driver sharing the car */
+	Crew?: string[];
 };
 
 export type RaceControlMessages = {
@@ -168,7 +206,8 @@ export type Series = {
 
 export type LapCount = {
 	CurrentLap: number;
-	TotalLaps: number;
+	/** unknown for timed races and some series */
+	TotalLaps?: number;
 };
 
 export type TimingData = {
@@ -206,8 +245,11 @@ export type TimingDataDriver = {
 	BestLapTime: PersonalBestLapTime;
 	LastLapTime: I1;
 	NumberOfLaps: number; // TODO check
+	NumberOfPitStops?: number;
 	KnockedOut?: boolean;
 	Cutoff?: boolean;
+	/** WEC: position within the car's class */
+	ClassPosition?: number;
 };
 
 export type Sector = {

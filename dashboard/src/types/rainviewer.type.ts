@@ -3,12 +3,12 @@ export type Rainviewer = {
 	generated: number;
 	host: string;
 	radar: Radar;
-	satellite: Satellite;
+	satellite?: Satellite;
 };
 
 export type Radar = {
 	past: MapItem[];
-	nowcast: MapItem[];
+	nowcast?: MapItem[];
 };
 
 export type MapItem = {

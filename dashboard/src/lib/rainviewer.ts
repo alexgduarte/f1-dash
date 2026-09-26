@@ -15,3 +15,14 @@ export const getRainviewer = async (): Promise<Rainviewer | null> => {
 		return null;
 	}
 };
+
+/** Radar frames oldest first; the forecast (nowcast) part is not always offered. */
+export const getRadarFrames = (rainviewer: Rainviewer) => {
+	const past = rainviewer.radar?.past ?? [];
+	const nowcast = rainviewer.radar?.nowcast ?? [];
+
+	return {
+		frames: [...past, ...nowcast],
+		latestPast: Math.max(past.length - 1, 0),
+	};
+};

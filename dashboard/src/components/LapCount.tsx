@@ -7,7 +7,7 @@ export default function LapCount() {
 		<>
 			{!!lapCount && (
 				<p className="text-3xl font-extrabold whitespace-nowrap sm:hidden">
-					{lapCount?.CurrentLap} / {lapCount?.TotalLaps}
+					{lapCount.TotalLaps ? `${lapCount.CurrentLap} / ${lapCount.TotalLaps}` : `L${lapCount.CurrentLap}`}
 				</p>
 			)}
 		</>

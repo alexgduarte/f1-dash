@@ -19,9 +19,16 @@ type Props = {
 	updateState: (state: State) => void;
 	updatePosition: (pos: Positions) => void;
 	updateCarData: (car: CarsData) => void;
+	resetState: () => void;
 };
 
-export const useDataEngine = ({ updateState, updatePosition, updateCarData }: Props) => {
+// identifies a session, a new one means the previous state must not leak into it
+const sessionIdentity = (state: MessageInitial): string | null => {
+	const info = state.SessionInfo;
+	return info ? `${info.Meeting?.Key ?? ""}:${info.Key ?? ""}:${info.Name ?? ""}` : null;
+};
+
+export const useDataEngine = ({ updateState, updatePosition, updateCarData, resetState }: Props) => {
 	const buffers = {
 		ExtrapolatedClock: useStatefulBuffer(),
 		TopThree: useStatefulBuffer(),
@@ -38,6 +45,7 @@ export const useDataEngine = ({ updateState, updatePosition, updateCarData }: Pr
 		TimingData: useStatefulBuffer(),
 		TeamRadio: useStatefulBuffer(),
 		ChampionshipPrediction: useStatefulBuffer(),
+		TyreSets: useStatefulBuffer(),
 	};
 
 	const carBuffer = useBuffer<CarsData>();
@@ -46,22 +54,49 @@ export const useDataEngine = ({ updateState, updatePosition, updateCarData }: Pr
 	const [maxDelay, setMaxDelay] = useState<number>(0);
 
 	const delayRef = useRef<number>(0);
+	const sessionRef = useRef<string | null>(null);
 
-	useSettingsStore.subscribe(
-		(state) => state.delay,
-		(delay) => (delayRef.current = delay),
-		{ fireImmediately: true },
+	useEffect(
+		() =>
+			useSettingsStore.subscribe(
+				(state) => state.delay,
+				(delay) => (delayRef.current = delay),
+				{ fireImmediately: true },
+			),
+		[],
 	);
 
 	const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+	/** Drops all buffered and displayed data, e.g. when switching series. */
+	const reset = () => {
+		sessionRef.current = null;
+
+		Object.values(buffers).forEach((buffer) => buffer.reset());
+		carBuffer.reset();
+		posBuffer.reset();
+
+		resetState();
+	};
+
 	const handleInitial = ({ CarDataZ: carZ, PositionZ: posZ, ...initial }: MessageInitial) => {
-		updateState(initial);
+		// An initial message is either a new session (start over) or a fresh
+		// snapshot of the same session after the connection lagged or dropped
+		// (replace each topic, but keep the delay buffers intact).
+		const session = sessionIdentity(initial);
+		const sameSession = session !== null && session === sessionRef.current;
+		sessionRef.current = session;
+
+		if (!sameSession) {
+			reset();
+			sessionRef.current = session;
+			updateState(initial);
+		}
 
 		Object.keys(buffers).forEach((key) => {
 			const data = initial[key as keyof typeof initial];
 			const buffer = buffers[key as keyof typeof buffers];
-			if (data) buffer.push(data);
+			if (data) buffer.replace(data);
 		});
 
 		if (carZ) {
@@ -173,6 +208,7 @@ export const useDataEngine = ({ updateState, updatePosition, updateCarData }: Pr
 	return {
 		handleUpdate,
 		handleInitial,
+		reset,
 		maxDelay,
 	};
 };

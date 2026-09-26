@@ -6,6 +6,7 @@ import "@/styles/globals.css";
 import { env } from "@/env";
 import EnvScript from "@/env-script";
 import OledModeProvider from "@/components/OledModeProvider";
+import NativeBridge from "@/components/NativeBridge";
 
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: Props) {
 			</head>
 
 			<body>
+				<NativeBridge />
 				<OledModeProvider>{children}</OledModeProvider>
 			</body>
 		</html>

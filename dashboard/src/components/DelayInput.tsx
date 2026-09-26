@@ -17,6 +17,14 @@ export default function DelayInput({ className, saveDelay }: Props) {
 	const isPaused = useSettingsStore((s) => s.delayIsPaused);
 
 	const [delayState, setDelayState] = useState<string>(currentDelay.toString());
+	const [syncedDelay, setSyncedDelay] = useState<number>(currentDelay);
+
+	// follow changes made elsewhere (the pause timer, switching series) during
+	// render, so the input never shows a value the store no longer holds
+	if (currentDelay !== syncedDelay) {
+		setSyncedDelay(currentDelay);
+		setDelayState(currentDelay.toString());
+	}
 
 	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -32,16 +40,6 @@ export default function DelayInput({ className, saveDelay }: Props) {
 		timeoutRef.current = setTimeout(updateDelay, saveDelay || 0);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [delayState]);
-
-	useEffect(() => {
-		if (!isPaused) setDelayState(currentDelay.toString());
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [isPaused]);
-
-	useEffect(() => {
-		if (isPaused) setDelayState(currentDelay.toString());
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [currentDelay]);
 
 	const handleChange = (v: string) => {
 		setDelayState(v);
