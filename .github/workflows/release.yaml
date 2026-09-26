@@ -11,7 +11,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  USER: slowlydev
+  # images go to the registry of whoever owns this copy of the repository
+  USER: ${{ github.repository_owner }}
 
 jobs:
   build-and-push:

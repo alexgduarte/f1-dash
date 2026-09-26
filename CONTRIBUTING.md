@@ -53,7 +53,8 @@ rustup toolchain install
 cp .env.example .env
 
 # To start the live backend which handles the realtime part
-cargo r -p live
+# (SERIES=f1 limits it to Formula 1, the default is every series)
+cargo r -p realtime
 
 # To start the api backend which handles the schedule
 cargo r -p api
@@ -80,6 +81,55 @@ cargo r -p saver year-circuit.data.txt
 > [!NOTE]
 > I recommend naming the files with the ending 
 > ".data.txt" as this extension is in the gitignore so you won't accidentally commit the telemetry recordings.
+
+## Native app
+
+The desktop and mobile apps are a [Tauri](https://v2.tauri.app) shell around the dashboard in `dashboard/src-tauri`. They run the feed adapters from `feeds/` in-process instead of talking to the realtime and api services. Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS first (on Linux: WebKitGTK 4.1 and friends).
+
+```bash
+cd dashboard
+
+# desktop app with the dashboard's dev server and hot reloading
+yarn tauri dev
+
+# installers for the current OS into src-tauri/target/release/bundle
+yarn tauri build
+
+# a universal macOS build that runs on Apple Silicon and Intel
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+yarn tauri build --target universal-apple-darwin
+```
+
+The app bundles a static build of the dashboard (`NEXT_EXPORT=1`, set automatically when the Tauri CLI runs the build) and opens on `/dashboard/`.
+
+### Mobile
+
+The Android Studio and Xcode projects are generated rather than committed, so run `init` once per checkout. Android needs Android Studio with the SDK and NDK (set `ANDROID_HOME` and `NDK_HOME`); iOS needs macOS with Xcode.
+
+```bash
+yarn tauri android init
+yarn tauri android dev      # emulator or a device over USB
+yarn tauri android build --apk
+
+yarn tauri ios init         # the app targets iPhone and iPad
+yarn tauri ios dev
+yarn tauri ios build
+```
+
+### Release builds
+
+`.github/workflows/app.yaml` builds every platform on pull requests and drafts a release with the desktop installers when a tag like `app-v4.1.0` is pushed. Without signing keys it still produces working builds, with caveats:
+
+- **Android**: a debug APK. For a signed release APK add the repository secrets `ANDROID_KEYSTORE` (base64 encoded keystore), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`.
+- **iOS / iPadOS**: a simulator build. For an installable IPA add `IOS_CERTIFICATE`, `IOS_CERTIFICATE_PASSWORD`, `IOS_MOBILE_PROVISION` and `APPLE_DEVELOPMENT_TEAM`, as described in Tauri's [iOS code signing guide](https://v2.tauri.app/distribute/sign/ios/).
+- **macOS**: unsigned, so Gatekeeper asks for confirmation on first launch. Signing and notarization follow Tauri's [macOS guide](https://v2.tauri.app/distribute/sign/macos/).
+- **Windows**: unsigned, so SmartScreen may warn.
+
+The bundle identifier is `io.github.alexgduarte.f1dash` in `dashboard/src-tauri/tauri.conf.json`; change it if you publish under another name.
+
+## Adding a series
+
+A series is an adapter in `feeds/src/adapters/` that fills a `Sink` with topics in the F1 live timing layout (`DriverList`, `TimingData`, `SessionInfo`, `TrackStatus`, ...), plus a schedule source in `feeds/src/schedule.rs`. Register it in `feeds/src/series.rs` and `feeds/src/adapters/mod.rs`, and in `dashboard/src/lib/series.ts` for the switcher. `feeds/src/adapters/util.rs` has a `Publisher` that only sends the topics that changed.
 
 ## Branching Convention
 

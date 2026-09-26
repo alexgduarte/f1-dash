@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: swatinem/rust-cache@v2
+
+      - name: Test the feeds and servers
+        run: cargo test -p feeds -p signalr -p realtime -p api
+
+      - name: Clippy
+        run: cargo clippy -p feeds -p signalr -p realtime -p api --all-targets -- -D warnings
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: dashboard/.nvmrc
+
+      - run: corepack enable
+
+      - run: yarn install --immutable
+
+      - run: yarn lint
+
+      - name: Build the website
+        run: yarn build
+
+      - name: Build the static export the apps bundle
+        run: yarn build:export
