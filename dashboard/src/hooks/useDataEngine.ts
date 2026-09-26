@@ -20,6 +20,7 @@ type Props = {
 	updatePosition: (pos: Positions) => void;
 	updateCarData: (car: CarsData) => void;
 	resetState: () => void;
+	removeTopics: (topics: string[]) => void;
 };
 
 // identifies a session, a new one means the previous state must not leak into it
@@ -28,7 +29,7 @@ const sessionIdentity = (state: MessageInitial): string | null => {
 	return info ? `${info.Meeting?.Key ?? ""}:${info.Key ?? ""}:${info.Name ?? ""}` : null;
 };
 
-export const useDataEngine = ({ updateState, updatePosition, updateCarData, resetState }: Props) => {
+export const useDataEngine = ({ updateState, updatePosition, updateCarData, resetState, removeTopics }: Props) => {
 	const buffers = {
 		ExtrapolatedClock: useStatefulBuffer(),
 		TopThree: useStatefulBuffer(),
@@ -95,6 +96,12 @@ export const useDataEngine = ({ updateState, updatePosition, updateCarData, rese
 			reset();
 			sessionRef.current = session;
 			updateState(initial);
+		} else {
+			// a snapshot at another moment of the same session (a replay seek)
+			// may predate topics shown now, e.g. team radio before the start
+			const missing = Object.keys(buffers).filter((key) => initial[key as keyof typeof initial] === undefined);
+			missing.forEach((key) => buffers[key as keyof typeof buffers].reset());
+			removeTopics(missing);
 		}
 
 		Object.keys(buffers).forEach((key) => {

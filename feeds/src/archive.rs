@@ -87,9 +87,10 @@ pub fn check_path(relative: &str) -> Result<(), Error> {
         && !relative.contains('\\')
         && !relative.contains("://")
         && relative.split('/').all(|part| part != ".." && part != ".")
+        // letters beyond ASCII occur, e.g. 2024-11-03_São_Paulo_Grand_Prix
         && relative
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "/_-.%+".contains(c));
+            .all(|c| c.is_alphanumeric() || "/_-.%+".contains(c));
 
     if !valid {
         bail!("invalid archive path '{relative}'");
@@ -128,7 +129,8 @@ pub fn parse_stream(text: &str) -> Vec<(u64, Value)> {
         .collect()
 }
 
-fn parse_offset(stamp: &str) -> Option<u64> {
+/// Parses `HH:MM:SS(.mmm)` into milliseconds.
+pub fn parse_offset(stamp: &str) -> Option<u64> {
     let mut parts = stamp.trim().split(':');
     let hours: u64 = parts.next()?.parse().ok()?;
     let minutes: u64 = parts.next()?.parse().ok()?;
@@ -249,6 +251,10 @@ mod tests {
         assert!(check_path("/2025/Index.json").is_err());
         assert!(check_path("http://evil/").is_err());
         assert!(check_path("2025/a b").is_err());
+        assert!(
+            check_path("2024/2024-11-03_São_Paulo_Grand_Prix/2024-11-03_Race/TimingData.json")
+                .is_ok()
+        );
 
         assert!(check_session_path("2025/2025-07-06_British_Grand_Prix/2025-07-06_Race/").is_ok());
         assert!(check_session_path("2025/2025-07-06_British_Grand_Prix/").is_err());

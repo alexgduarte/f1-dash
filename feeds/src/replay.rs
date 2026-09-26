@@ -10,11 +10,16 @@
 //! works the same over server-sent events and native IPC.
 
 use std::{
+    collections::HashMap,
     sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 
 use anyhow::{Context, Error, bail};
+use futures::{
+    FutureExt,
+    future::{BoxFuture, Shared},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use tokio::time::Instant;
@@ -165,7 +170,7 @@ impl Timeline {
             .checked_sub(1)?;
         let (since, clock) = &self.clocks[index];
 
-        let remaining = parse_hms(clock.get("Remaining")?.as_str()?)?;
+        let remaining = archive::parse_offset(clock.get("Remaining")?.as_str()?)?;
         let running = clock
             .get("Extrapolating")
             .and_then(Value::as_bool)
@@ -182,14 +187,6 @@ impl Timeline {
             "Extrapolating": false,
         }))
     }
-}
-
-fn parse_hms(value: &str) -> Option<u64> {
-    let mut parts = value.split(':');
-    let hours: u64 = parts.next()?.parse().ok()?;
-    let minutes: u64 = parts.next()?.parse().ok()?;
-    let seconds: f64 = parts.next()?.parse().ok()?;
-    Some(hours * 3_600_000 + minutes * 60_000 + (seconds * 1000.0) as u64)
 }
 
 fn format_hms(millis: u64) -> String {
@@ -209,8 +206,18 @@ fn cache() -> &'static Cache {
     CACHE.get_or_init(Default::default)
 }
 
+type Load = Shared<BoxFuture<'static, Result<Arc<Timeline>, String>>>;
+
+/// Downloads in progress, shared by every replay of the same session.
+fn loads() -> &'static Mutex<HashMap<String, Load>> {
+    static LOADS: OnceLock<Mutex<HashMap<String, Load>>> = OnceLock::new();
+    LOADS.get_or_init(Default::default)
+}
+
 /// Loads a session's timeline, keeping the last few in memory so seeking or
-/// changing speed does not download the session again.
+/// changing speed does not download the session again. The download runs as
+/// its own task shared by everyone waiting for it, so a replay restarted
+/// while loading (a pause, a speed change) picks up the same download.
 pub async fn timeline(archive: &Archive, path: &str) -> Result<Arc<Timeline>, Error> {
     if let Some(timeline) = cache()
         .lock()
@@ -220,11 +227,41 @@ pub async fn timeline(archive: &Archive, path: &str) -> Result<Arc<Timeline>, Er
         return Ok(timeline);
     }
 
-    info!(path, "loading replay");
-    let timeline = Arc::new(Timeline::load(archive, path).await?);
+    let load = {
+        let mut loads = loads()
+            .lock()
+            .map_err(|_| anyhow::anyhow!("replay loads poisoned"))?;
 
-    if let Ok(mut cache) = cache().lock() {
-        cache.retain(|t| t.path != path);
+        loads
+            .entry(path.to_owned())
+            .or_insert_with(|| {
+                info!(path, "loading replay");
+                let archive = archive.clone();
+                let owned = path.to_owned();
+                let task = tokio::spawn(async move {
+                    Timeline::load(&archive, &owned)
+                        .await
+                        .map(Arc::new)
+                        .map_err(|err| format!("{err:#}"))
+                });
+                async move { task.await.map_err(|err| err.to_string())? }
+                    .boxed()
+                    .shared()
+            })
+            .clone()
+    };
+
+    let result = load.await;
+
+    if let Ok(mut loads) = loads().lock() {
+        loads.remove(path);
+    }
+
+    let timeline = result.map_err(anyhow::Error::msg)?;
+
+    if let Ok(mut cache) = cache().lock()
+        && !cache.iter().any(|t| t.path == path)
+    {
         cache.insert(0, timeline.clone());
         cache.truncate(CACHED_TIMELINES);
     }
@@ -299,6 +336,9 @@ pub async fn run(archive: Archive, request: ReplayRequest, sink: Sink) -> Result
     let mut next = timeline.index_after(from);
     let mut last_clock = None;
     let mut last_status = Instant::now();
+    // once at the end the final state stays up, and the loop keeps running so
+    // a tyre history that loads late is still published
+    let mut finished = from >= timeline.end;
 
     loop {
         tokio::select! {
@@ -311,7 +351,7 @@ pub async fn run(archive: Archive, request: ReplayRequest, sink: Sink) -> Result
             _ = tokio::time::sleep(TICK) => {}
         }
 
-        if paused {
+        if paused || finished {
             continue;
         }
 
@@ -354,17 +394,24 @@ pub async fn run(archive: Archive, request: ReplayRequest, sink: Sink) -> Result
 
         if ended {
             info!(path = timeline.path, "replay finished");
-            // keep the final state up for subscribers
-            std::future::pending::<()>().await;
+            finished = true;
         }
     }
 }
 
-/// Logs and swallows the error of a replay task, which has nowhere to go.
+/// Runs a replay, retrying with backoff when the session cannot be loaded
+/// (archive unreachable, timeout), until the task is dropped.
 pub async fn run_logged(archive: Archive, request: ReplayRequest, sink: Sink) {
-    let path = request.path.clone();
-    if let Err(err) = run(archive, request, sink).await {
-        warn!(?err, path, "replay failed");
+    let mut backoff = Duration::from_secs(2);
+
+    loop {
+        match run(archive.clone(), request.clone(), sink.clone()).await {
+            Ok(()) => return,
+            Err(err) => warn!(?err, path = request.path, "replay failed, retrying"),
+        }
+
+        tokio::time::sleep(backoff).await;
+        backoff = (backoff * 2).min(Duration::from_secs(60));
     }
 }
 

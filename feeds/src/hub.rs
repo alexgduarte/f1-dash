@@ -44,6 +44,8 @@ pub struct Sink {
     state: StateService,
     tx: broadcast::Sender<HubMessage>,
     connected: Arc<AtomicBool>,
+    /// Whether the adapter has published a state yet.
+    published: Arc<AtomicBool>,
 }
 
 impl Sink {
@@ -51,6 +53,7 @@ impl Sink {
     /// also marks the feed as connected.
     pub async fn reset(&self, initial: Value) {
         self.state.set_state(initial).await;
+        self.published.store(true, Ordering::SeqCst);
         let serialized: Arc<str> = self.state.get_state_string().await.into();
         let _ = self.tx.send(HubMessage::Initial(serialized));
         self.set_connected(true);
@@ -94,6 +97,7 @@ impl FeedHub {
                 state: StateService::new(),
                 tx,
                 connected: Arc::new(AtomicBool::new(false)),
+                published: Arc::new(AtomicBool::new(false)),
             },
         }
     }
@@ -141,7 +145,7 @@ impl FeedHub {
                     // nothing published yet: the adapter's first reset
                     // arrives as the initial state instead, so clients never
                     // mistake an empty snapshot for a new session
-                    if &*initial == "{}" {
+                    if !hub.sink.published.load(Ordering::SeqCst) {
                         let status = HubMessage::Status(hub.connected());
                         return Some((status, (hub, Phase::Live(rx))));
                     }

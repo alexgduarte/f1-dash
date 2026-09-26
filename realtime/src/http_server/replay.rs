@@ -11,17 +11,17 @@ use axum::{
 };
 use chrono::Datelike;
 use feeds::{
-    FeedHub, HubMessage, Series,
+    FeedHub, Series,
     archive::{self, Archive, ArchiveMeeting},
     replay::{self, ReplayRequest},
+    util::AbortOnDrop,
 };
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
-use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
-use crate::http_server::ApiError;
+use crate::http_server::{ApiError, sse_event};
 
 /// Replays can be turned off with `REPLAY=off`, e.g. on a busy public server
 /// where every replay viewer holds a session in memory.
@@ -60,14 +60,6 @@ pub async fn sessions(
         })
 }
 
-struct AbortOnDrop(JoinHandle<()>);
-
-impl Drop for AbortOnDrop {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
-
 /// Streams a replay like `/api/realtime` streams a live feed. Changing the
 /// position, speed or pause state means opening a new stream.
 pub async fn stream(
@@ -94,13 +86,7 @@ pub async fn stream(
 
     let stream = hub.stream().map(move |message| {
         let _replay = &guard;
-        Ok(match message {
-            HubMessage::Initial(state) => Event::default().event("initial").data(&*state),
-            HubMessage::Update(update) => Event::default().event("update").data(&*update),
-            HubMessage::Status(connected) => {
-                Event::default().event("status").data(connected.to_string())
-            }
-        })
+        Ok(sse_event(message))
     });
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().text("keep-alive-text")))

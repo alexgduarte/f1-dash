@@ -30,6 +30,20 @@ pub struct SeriesQuery {
 
 pub type ApiError = (StatusCode, Json<serde_json::Value>);
 
+/// A hub message as a server-sent event: `initial`, `update` or `status`.
+pub fn sse_event(message: feeds::HubMessage) -> axum::response::sse::Event {
+    use axum::response::sse::Event;
+    use feeds::HubMessage;
+
+    match message {
+        HubMessage::Initial(state) => Event::default().event("initial").data(&*state),
+        HubMessage::Update(update) => Event::default().event("update").data(&*update),
+        HubMessage::Status(connected) => {
+            Event::default().event("status").data(connected.to_string())
+        }
+    }
+}
+
 impl SeriesQuery {
     /// Resolves `?series=` (default `f1`) to an enabled hub.
     pub fn hub(&self, hubs: &Hubs) -> Result<FeedHub, ApiError> {

@@ -7,11 +7,10 @@ use axum::{
         sse::{Event, KeepAlive},
     },
 };
-use feeds::HubMessage;
 use futures::{Stream, StreamExt};
 use tracing::info;
 
-use crate::http_server::{ApiError, Hubs, SeriesQuery};
+use crate::http_server::{ApiError, Hubs, SeriesQuery, sse_event};
 
 /// Server-sent events: `initial` with the full state (again after a session
 /// change or when the client lagged behind), then `update` with partials.
@@ -23,15 +22,7 @@ pub async fn sse_stream(
 
     info!(series = %hub.series(), connections = hub.receiver_count(), "sse client connected");
 
-    let stream = hub.stream().map(|message| {
-        Ok(match message {
-            HubMessage::Initial(state) => Event::default().event("initial").data(&*state),
-            HubMessage::Update(update) => Event::default().event("update").data(&*update),
-            HubMessage::Status(connected) => {
-                Event::default().event("status").data(connected.to_string())
-            }
-        })
-    });
+    let stream = hub.stream().map(|message| Ok(sse_event(message)));
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().text("keep-alive-text")))
 }

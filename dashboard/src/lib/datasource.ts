@@ -111,10 +111,51 @@ export const subscribeReplay = (path: string, request: ReplayRequest, handlers: 
 		return () => {};
 	}
 
-	const params = new URLSearchParams({ path, speed: String(request.speed), paused: String(request.paused) });
-	if (request.from !== undefined) params.set("from", String(Math.round(request.from)));
+	// EventSource reconnects to the same URL by itself, which would restart the
+	// replay where it began; reconnect by hand from the last known position
+	let position = request.from;
+	let closed = false;
+	let retry: ReturnType<typeof setTimeout> | null = null;
+	let close: () => void = () => {};
 
-	return listenToEventSource(`${base}/api/replay?${params}`, handlers);
+	const tracking: FeedHandlers = {
+		...handlers,
+		onInitial: (data) => {
+			if (data.Replay?.Position !== undefined) position = data.Replay.Position;
+			handlers.onInitial(data);
+		},
+		onUpdate: (data) => {
+			if (data.Replay?.Position !== undefined) position = data.Replay.Position;
+			handlers.onUpdate(data);
+		},
+	};
+
+	const open = () => {
+		const params = new URLSearchParams({ path, speed: String(request.speed), paused: String(request.paused) });
+		if (position !== undefined) params.set("from", String(Math.round(position)));
+
+		const sse = new EventSource(`${base}/api/replay?${params}`);
+
+		sse.addEventListener("initial", (message) => tracking.onInitial(JSON.parse(message.data)));
+		sse.addEventListener("update", (message) => tracking.onUpdate(JSON.parse(message.data)));
+		sse.addEventListener("status", (message) => handlers.onConnection(message.data === "true"));
+
+		sse.onerror = () => {
+			sse.close();
+			handlers.onConnection(false);
+			if (!closed) retry = setTimeout(open, 2000);
+		};
+
+		close = () => sse.close();
+	};
+
+	open();
+
+	return () => {
+		closed = true;
+		if (retry) clearTimeout(retry);
+		close();
+	};
 };
 
 const fetchApi = async <T>(path: string): Promise<T | null> => {

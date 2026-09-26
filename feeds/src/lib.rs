@@ -14,6 +14,7 @@ pub mod schedule;
 pub mod series;
 pub mod state;
 pub mod tyres;
+pub mod util;
 
 pub use hub::{FeedHub, HubMessage, Sink};
 pub use series::Series;

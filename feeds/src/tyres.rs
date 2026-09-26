@@ -20,14 +20,13 @@ use std::{
 use anyhow::{Context, Error};
 use serde::Serialize;
 use serde_json::{Value, json};
-use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 
 pub mod rules;
 
 use rules::{Format, Return};
 
-use crate::archive::Archive;
+use crate::{archive::Archive, util::AbortOnDrop};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -657,14 +656,6 @@ pub fn compute(
             .collect(),
         history_loaded,
         lines,
-    }
-}
-
-struct AbortOnDrop<T>(JoinHandle<T>);
-
-impl<T> Drop for AbortOnDrop<T> {
-    fn drop(&mut self) {
-        self.0.abort();
     }
 }
 

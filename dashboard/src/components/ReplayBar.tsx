@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useDataStore } from "@/stores/useDataStore";
 import { useReplayStore } from "@/stores/useReplayStore";
@@ -43,9 +43,30 @@ export default function ReplayBar({ name }: Props) {
 	const end = status?.End ?? 0;
 	const min = Math.max(0, Math.min(start - LEAD_IN_MS, position));
 
+	// the server reports the position once a second; between reports it is
+	// estimated, so pausing or changing speed does not jump back
+	const reportRef = useRef<{ position: number; at: number } | null>(null);
+
+	useEffect(() => {
+		if (status) reportRef.current = { position: status.Position, at: Date.now() };
+	}, [status]);
+
+	const currentPosition = () => {
+		const report = reportRef.current;
+		if (!status || !report) return status?.Position;
+		if (status.Paused || status.Ended) return status.Position;
+		return Math.min(end, report.position + (Date.now() - report.at) * status.Speed);
+	};
+
 	const seek = (to: number) => {
 		setScrubbing(null);
 		control({ from: to });
+	};
+
+	const togglePlay = () => {
+		// a finished replay starts over
+		if (status?.Ended) control({ from: min, paused: false });
+		else control({ from: currentPosition(), paused: !request.paused });
 	};
 
 	return (
@@ -55,11 +76,7 @@ export default function ReplayBar({ name }: Props) {
 				<p className="max-w-60 truncate text-sm font-medium">{name}</p>
 			</div>
 
-			<PlayControls
-				playing={!request.paused && !status?.Ended}
-				loading={!status}
-				onClick={() => control({ from: status?.Position, paused: !request.paused })}
-			/>
+			<PlayControls playing={!request.paused && !status?.Ended} loading={!status} onClick={togglePlay} />
 
 			<div className="flex min-w-48 flex-1 items-center gap-2">
 				<span className="w-16 text-right text-sm text-zinc-400 tabular-nums">
@@ -88,7 +105,8 @@ export default function ReplayBar({ name }: Props) {
 				<select
 					className="rounded-md bg-zinc-800 px-1 py-0.5 text-white"
 					value={request.speed}
-					onChange={(e) => control({ from: status?.Position, speed: Number(e.target.value) })}
+					disabled={!status}
+					onChange={(e) => control({ from: currentPosition(), speed: Number(e.target.value) })}
 				>
 					{SPEEDS.map((speed) => (
 						<option key={speed} value={speed}>

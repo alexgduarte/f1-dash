@@ -7,6 +7,7 @@ type Fns = {
 	updatePosition: (pos: Positions) => void;
 	updateCarData: (car: CarsData) => void;
 	resetState: () => void;
+	removeTopics: (topics: string[]) => void;
 };
 
 export const useStores = (): Fns => {
@@ -16,6 +17,7 @@ export const useStores = (): Fns => {
 		updateState: (v) => dataStore.setState(v),
 		updatePosition: (v) => dataStore.setPositions(v),
 		updateCarData: (v) => dataStore.setCarsData(v),
+		removeTopics: (topics) => dataStore.removeTopics(topics),
 		resetState: () => {
 			dataStore.setState(null);
 			dataStore.setCarsData(null);

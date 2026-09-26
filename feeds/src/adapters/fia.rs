@@ -269,10 +269,12 @@ impl FiaState {
                 continue;
             };
 
+            // the snapshot and the first push can overlap by a message, but
+            // race control does repeat itself (a second double yellow)
             if self
                 .messages
-                .iter()
-                .any(|m| m["Message"] == message.as_str())
+                .last()
+                .is_some_and(|m| m["Message"] == message.as_str())
             {
                 continue;
             }
@@ -774,18 +776,36 @@ mod tests {
         let mut state = FiaState::default();
         state.apply_push(
             "commentaryfeed",
-            &[json!("ts"), json!("TRACK LIMITS CAR 5 TURN 4")],
+            &[json!("ts"), json!("DOUBLE YELLOW SECTOR 2")],
         );
         state.apply_push(
             "commentaryfeed",
-            &[json!("ts"), json!({ "Text": "TRACK LIMITS CAR 5 TURN 4" })],
+            &[json!("ts"), json!({ "Text": "DOUBLE YELLOW SECTOR 2" })],
         );
         state.apply_push(
             "commentaryfeed",
             &[json!("ts"), json!([{ "Text": "GREEN FLAG" }])],
         );
+        state.apply_push(
+            "commentaryfeed",
+            &[json!("ts"), json!("DOUBLE YELLOW SECTOR 2")],
+        );
 
-        let messages = &state.topics("F2")["RaceControlMessages"]["Messages"];
-        assert_eq!(messages.as_array().unwrap().len(), 2);
+        let topics = state.topics("F2");
+        let messages: Vec<&str> = topics["RaceControlMessages"]["Messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["Message"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            messages,
+            vec![
+                "DOUBLE YELLOW SECTOR 2",
+                "GREEN FLAG",
+                "DOUBLE YELLOW SECTOR 2"
+            ],
+            "an overlapping repeat is dropped, a later repeat is kept"
+        );
     }
 }
